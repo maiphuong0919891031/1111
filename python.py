@@ -1,5 +1,3 @@
-# python.py
-
 import streamlit as st
 import pandas as pd
 from google import genai
@@ -11,7 +9,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("Ứng dụng Phân Tích Báo Cáo Tài Chính 📊")
+st.title("Ứng dụng Phân Tích Báo Cáo Tài chính 📊")
 
 # --- Hàm tính toán chính (Sử dụng Caching để Tối ưu hiệu suất) ---
 @st.cache_data
@@ -40,9 +38,7 @@ def process_financial_data(df):
     tong_tai_san_N = tong_tai_san_row['Năm sau'].iloc[0]
 
     # ******************************* PHẦN SỬA LỖI BẮT ĐẦU *******************************
-    # Lỗi xảy ra khi dùng .replace() trên giá trị đơn lẻ (numpy.int64).
-    # Sử dụng điều kiện ternary để xử lý giá trị 0 thủ công cho mẫu số.
-    
+    # Xử lý mẫu số 0 thủ công để tính tỷ trọng
     divisor_N_1 = tong_tai_san_N_1 if tong_tai_san_N_1 != 0 else 1e-9
     divisor_N = tong_tai_san_N if tong_tai_san_N != 0 else 1e-9
 
@@ -53,7 +49,7 @@ def process_financial_data(df):
     
     return df
 
-# --- Hàm gọi API Gemini ---
+# --- Hàm gọi API Gemini (Dùng cho phân tích Báo cáo tài chính) ---
 def get_ai_analysis(data_for_ai, api_key):
     """Gửi dữ liệu phân tích đến Gemini API và nhận nhận xét."""
     try:
@@ -63,7 +59,7 @@ def get_ai_analysis(data_for_ai, api_key):
         prompt = f"""
         Bạn là một chuyên gia phân tích tài chính chuyên nghiệp. Dựa trên các chỉ số tài chính sau, hãy đưa ra một nhận xét khách quan, ngắn gọn (khoảng 3-4 đoạn) về tình hình tài chính của doanh nghiệp. Đánh giá tập trung vào tốc độ tăng trưởng, thay đổi cơ cấu tài sản và khả năng thanh toán hiện hành.
         
-        Dữ liệu thô và chỉ số:
+        Dữ liệu thô và chỉ số:<br>
         {data_for_ai}
         """
 
@@ -76,7 +72,8 @@ def get_ai_analysis(data_for_ai, api_key):
     except APIError as e:
         return f"Lỗi gọi Gemini API: Vui lòng kiểm tra Khóa API hoặc giới hạn sử dụng. Chi tiết lỗi: {e}"
     except KeyError:
-        return "Lỗi: Không tìm thấy Khóa API 'GEMINI_API_KEY'. Vui lòng kiểm tra cấu hình Secrets trên Streamlit Cloud."
+        # Lỗi này đã được xử lý ở phần dưới khi gọi API
+        return "Lỗi: Không tìm thấy Khóa API 'GEMINI_API_KEY'."
     except Exception as e:
         return f"Đã xảy ra lỗi không xác định: {e}"
 
@@ -119,8 +116,7 @@ if uploaded_file is not None:
                 tsnh_n = df_processed[df_processed['Chỉ tiêu'].str.contains('TÀI SẢN NGẮN HẠN', case=False, na=False)]['Năm sau'].iloc[0]
                 tsnh_n_1 = df_processed[df_processed['Chỉ tiêu'].str.contains('TÀI SẢN NGẮN HẠN', case=False, na=False)]['Năm trước'].iloc[0]
 
-                # Lấy Nợ ngắn hạn (Dùng giá trị giả định hoặc lọc từ file nếu có)
-                # **LƯU Ý: Thay thế logic sau nếu bạn có Nợ Ngắn Hạn trong file**
+                # Lấy Nợ ngắn hạn
                 no_ngan_han_N = df_processed[df_processed['Chỉ tiêu'].str.contains('NỢ NGẮN HẠN', case=False, na=False)]['Năm sau'].iloc[0]  
                 no_ngan_han_N_1 = df_processed[df_processed['Chỉ tiêu'].str.contains('NỢ NGẮN HẠN', case=False, na=False)]['Năm trước'].iloc[0]
 
@@ -183,3 +179,63 @@ if uploaded_file is not None:
 
 else:
     st.info("Vui lòng tải lên file Excel để bắt đầu phân tích.")
+
+
+# =================================================================
+# --- CHỨC NĂNG MỚI: KHUNG CHATBOT HỎI ĐÁP TƯƠNG TÁC (CHATBOX) ---
+# =================================================================
+st.markdown("---")
+st.subheader("6. Chatbot Hỏi Đáp Tài chính với Gemini 🤖")
+st.caption("Hãy hỏi Gemini bất cứ điều gì liên quan đến tài chính, đầu tư, hoặc các khái niệm kinh tế.")
+
+# 1. Lấy API Key
+API_KEY = st.secrets.get("GEMINI_API_KEY")
+
+if not API_KEY:
+    st.error("Lỗi: Không tìm thấy Khóa API 'GEMINI_API_KEY'. Chatbot không thể hoạt động.")
+else:
+    try:
+        # 2. Khởi tạo Gemini Client và Chat Session (chỉ 1 lần)
+        if "gemini_client" not in st.session_state:
+            st.session_state.gemini_client = genai.Client(api_key=API_KEY)
+            
+        if "chat_session" not in st.session_state:
+            # Thiết lập persona cho Chat Session để duy trì phong cách trả lời
+            system_instruction = "Bạn là một trợ lý phân tích tài chính thân thiện và chuyên nghiệp. Bạn có thể trả lời các câu hỏi về đầu tư, thị trường, và các chỉ số tài chính. Hãy trả lời một cách rõ ràng, ngắn gọn và sử dụng tiếng Việt."
+            
+            st.session_state.chat_session = st.session_state.gemini_client.chats.create(
+                model="gemini-2.5-flash", 
+                system_instruction=system_instruction
+            )
+            # Tin nhắn chào mừng ban đầu
+            st.session_state.messages = [{"role": "assistant", "content": "Xin chào! Tôi là trợ lý phân tích tài chính của bạn. Hãy hỏi tôi về các chỉ số, thị trường, hoặc chiến lược đầu tư!"}]
+
+        # 3. Hiển thị lịch sử chat
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        # 4. Xử lý input từ người dùng
+        if prompt := st.chat_input("Nhập câu hỏi của bạn tại đây..."):
+            
+            # Thêm tin nhắn người dùng vào lịch sử
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            # Gửi tin nhắn đến Gemini và nhận phản hồi
+            with st.spinner("Gemini đang soạn thảo câu trả lời..."):
+                try:
+                    response = st.session_state.chat_session.send_message(prompt)
+                    # Thêm phản hồi của AI vào lịch sử
+                    ai_response = response.text
+                    st.session_state.messages.append({"role": "assistant", "content": ai_response})
+                    with st.chat_message("assistant"):
+                        st.markdown(ai_response)
+                except APIError as e:
+                    error_msg = f"Lỗi gọi Gemini API trong Chatbot: Vui lòng kiểm tra Khóa API hoặc giới hạn sử dụng. Chi tiết lỗi: {e}"
+                    st.session_state.messages.append({"role": "assistant", "content": error_msg})
+                    st.error(error_msg)
+                
+    except Exception as e:
+        st.error(f"Đã xảy ra lỗi không xác định khi khởi tạo Chatbot: {e}")
